@@ -1,0 +1,56 @@
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  public:
+    name: Playwright · public surface (no backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test tests/e2e/public.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report-public, path: playwright-report/, retention-days: 7 }
+
+  full-journey:
+    name: Playwright · full user journey (local Supabase)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: supabase/setup-cli@v1
+        with: { version: latest }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start Supabase
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit
+      - name: Run journeys
+        run: |
+          eval "$(supabase status -o env)"
+          export NEXT_PUBLIC_SUPABASE_URL="${API_URL}"
+          export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="${PUBLISHABLE_KEY:-$ANON_KEY}"
+          E2E_SUPABASE=1 npx playwright test tests/e2e/authenticated.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report-journey, path: playwright-report/, retention-days: 7 }
+      - if: always()
+        run: supabase stop --no-backup
