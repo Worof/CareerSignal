@@ -16,7 +16,7 @@ jobs:
     environment: production   # configure required reviewers on this environment in GitHub settings
     steps:
       - uses: actions/checkout@v7
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with: { version: latest }
       - name: Link production project
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
